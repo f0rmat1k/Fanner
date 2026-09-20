@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Fanner.App/Fanner.App.csproj" />
+    <Project Path="src/Fanner.Core/Fanner.Core.csproj" />
+    <Project Path="src/Fanner.Hardware.Windows/Fanner.Hardware.Windows.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Fanner.Core.Tests/Fanner.Core.Tests.csproj" />
+  </Folder>
+</Solution>

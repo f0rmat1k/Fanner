@@ -1,0 +1,116 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Fanner.App.App"
+             RequestedThemeVariant="Default">
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="PageBackground" Color="#F4F5F7" />
+                    <SolidColorBrush x:Key="CardBackground" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="CardBorder" Color="#E2E4E9" />
+                    <SolidColorBrush x:Key="TextPrimary" Color="#12141A" />
+                    <SolidColorBrush x:Key="TextSecondary" Color="#6A7080" />
+                    <SolidColorBrush x:Key="AccentRpm" Color="#2F6FED" />
+                    <SolidColorBrush x:Key="AccentDuty" Color="#8A63D2" />
+                    <SolidColorBrush x:Key="AccentTemp" Color="#D9822B" />
+                    <SolidColorBrush x:Key="BadgeBackground" Color="#EDEFF3" />
+                    <SolidColorBrush x:Key="WarningBackground" Color="#FDF3E3" />
+                    <SolidColorBrush x:Key="WarningBorder" Color="#E8C48A" />
+                    <SolidColorBrush x:Key="AccentWarn" Color="#B45309" />
+                    <SolidColorBrush x:Key="WarnBadgeBackground" Color="#FBE3C4" />
+                </ResourceDictionary>
+
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="PageBackground" Color="#14161B" />
+                    <SolidColorBrush x:Key="CardBackground" Color="#1C1F26" />
+                    <SolidColorBrush x:Key="CardBorder" Color="#2A2E37" />
+                    <SolidColorBrush x:Key="TextPrimary" Color="#ECEEF2" />
+                    <SolidColorBrush x:Key="TextSecondary" Color="#8B92A1" />
+                    <SolidColorBrush x:Key="AccentRpm" Color="#5B9CFF" />
+                    <SolidColorBrush x:Key="AccentDuty" Color="#B08CFF" />
+                    <SolidColorBrush x:Key="AccentTemp" Color="#F0A65A" />
+                    <SolidColorBrush x:Key="BadgeBackground" Color="#262A33" />
+                    <SolidColorBrush x:Key="WarningBackground" Color="#2A2317" />
+                    <SolidColorBrush x:Key="WarningBorder" Color="#5C4A26" />
+                    <SolidColorBrush x:Key="AccentWarn" Color="#F0A65A" />
+                    <SolidColorBrush x:Key="WarnBadgeBackground" Color="#3A2F1C" />
+                </ResourceDictionary>
+
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
+    <Application.Styles>
+        <FluentTheme />
+
+        <Style Selector="TextBlock.h1">
+            <Setter Property="FontSize" Value="20" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+
+        <Style Selector="TextBlock.h2">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        </Style>
+
+        <Style Selector="TextBlock.caption">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+        </Style>
+
+        <Style Selector="TextBlock.metric">
+            <Setter Property="FontSize" Value="22" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}" />
+        </Style>
+
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource CardBackground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="14" />
+        </Style>
+
+        <Style Selector="Border.badge">
+            <Setter Property="Background" Value="{DynamicResource BadgeBackground}" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- An empty header stays in the list but recedes: it is context, not data. -->
+        <Style Selector="Border.card.empty">
+            <Setter Property="Opacity" Value="0.55" />
+        </Style>
+
+        <!-- A fan we have stopped is outlined, not dimmed: it needs attention. -->
+        <Style Selector="Border.card.stopped">
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentWarn}" />
+        </Style>
+
+        <Style Selector="Border.badge.warn">
+            <Setter Property="Background" Value="{DynamicResource WarnBadgeBackground}" />
+        </Style>
+
+        <Style Selector="Border.badge.warn > TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource AccentWarn}" />
+        </Style>
+
+        <!-- Compact revert button that fits beside a slider inside a card. -->
+        <Style Selector="Button.revert">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Width" Value="30" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+    </Application.Styles>
+
+</Application>
