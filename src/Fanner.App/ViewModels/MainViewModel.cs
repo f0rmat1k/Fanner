@@ -156,8 +156,19 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     public bool IsEditingCurve => CurveEditor is not null;
 
-    /// <summary>The side panel shows temperatures whenever no curve is open.</summary>
-    public bool IsShowingTemperatures => CurveEditor is null;
+    /// <summary>
+    /// Settings live in the side panel rather than a flyout.
+    /// </summary>
+    /// <remarks>
+    /// A popup dismisses itself whenever the window loses activation, which on a
+    /// busy multi-monitor desktop happens constantly and makes the panel feel
+    /// broken. The side panel also gives the settings room to explain themselves.
+    /// </remarks>
+    [ObservableProperty]
+    public partial bool IsShowingSettings { get; set; }
+
+    /// <summary>The side panel falls back to temperatures when nothing else claims it.</summary>
+    public bool IsShowingTemperatures => CurveEditor is null && !IsShowingSettings;
 
     partial void OnStateChanged(ShellState value)
     {
@@ -170,7 +181,29 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         OnPropertyChanged(nameof(IsEditingCurve));
         OnPropertyChanged(nameof(IsShowingTemperatures));
+
+        // The panel holds one thing at a time.
+        if (value is not null)
+        {
+            IsShowingSettings = false;
+        }
     }
+
+    partial void OnIsShowingSettingsChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsShowingTemperatures));
+
+        if (value)
+        {
+            CurveEditor = null;
+        }
+    }
+
+    [RelayCommand]
+    private void OpenSettings() => IsShowingSettings = true;
+
+    [RelayCommand]
+    private void CloseSettings() => IsShowingSettings = false;
 
     public async Task StartAsync()
     {

@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Fanner.Core.Curves;
 
 namespace Fanner.Core.Config;
@@ -73,6 +74,11 @@ public sealed record FannerConfig
         name is null ? null : Profiles.FirstOrDefault(p => p.Name == name);
 
     /// <summary>The profile to apply on launch, falling back to the first one.</summary>
+    /// <remarks>
+    /// Derived; see <see cref="Profile.IsEmpty"/>. Writing it would duplicate a whole
+    /// profile into the file alongside the real list.
+    /// </remarks>
+    [JsonIgnore]
     public Profile Active => Find(ActiveProfile) ?? Profiles.FirstOrDefault() ?? new Profile();
 }
 

@@ -78,7 +78,7 @@ internal sealed class TrayController : IDisposable
         {
             var item = new NativeMenuItem(name)
             {
-                ToggleType = NativeMenuItemToggleType.Radio,
+                ToggleType = MenuItemToggleType.Radio,
                 IsChecked = name == _viewModel.SelectedProfileName,
             };
 

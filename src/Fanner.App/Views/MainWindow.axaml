@@ -29,16 +29,31 @@
                                IsVisible="{Binding IsRunning}" />
                 </StackPanel>
 
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14"
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10"
                             VerticalAlignment="Center">
+
+                    <StackPanel Orientation="Horizontal" Spacing="6"
+                                VerticalAlignment="Center"
+                                IsVisible="{Binding IsRunning}">
+                        <TextBlock Classes="caption" Text="Profile" VerticalAlignment="Center" />
+                        <ComboBox ItemsSource="{Binding ProfileNames}"
+                                  SelectedItem="{Binding SelectedProfileName}"
+                                  MinWidth="130"
+                                  AutomationProperties.Name="Active profile" />
+                    </StackPanel>
+
+                    <Button Content="&#x2699;" FontSize="15" Padding="9,4"
+                            IsVisible="{Binding IsRunning}"
+                            Command="{Binding OpenSettingsCommand}"
+                            AutomationProperties.Name="Settings"
+                            ToolTip.Tip="Profiles and settings" />
+
                     <!-- Only meaningful once we hold a fan, and it is the escape
                          hatch, so it sits where it can always be found. -->
                     <Button Content="Restore all to BIOS"
                             Command="{Binding RestoreAllToFirmwareCommand}"
                             IsVisible="{Binding IsDrivingAnyFan}" />
-                    <CheckBox Content="Show empty headers"
-                              IsChecked="{Binding ShowEmptyHeaders}"
-                              IsVisible="{Binding IsRunning}" />
+
                     <TextBlock Classes="caption" VerticalAlignment="Center"
                                Text="{Binding LastUpdated, StringFormat='updated {0}'}"
                                IsVisible="{Binding IsRunning}" />
@@ -316,6 +331,74 @@
                         <Button Content="Stop curve, return to BIOS"
                                 HorizontalAlignment="Stretch"
                                 Command="{Binding StopCurveCommand}" />
+
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Settings share the side panel with the curve editor, for the same
+                 reason: a popup that dismisses on every activation change is no
+                 place for controls people need to read before they touch. -->
+            <Border Grid.Column="1" Classes="card" IsVisible="{Binding IsShowingSettings}">
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Spacing="14" Margin="0,0,12,0">
+
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Classes="h2" Text="Profiles and settings" />
+                            <Button Grid.Column="1" Content="Close" VerticalAlignment="Top"
+                                    Command="{Binding CloseSettingsCommand}"
+                                    AutomationProperties.Name="Close settings" />
+                        </Grid>
+
+                        <StackPanel Spacing="6">
+                            <TextBlock Classes="caption" Text="PROFILES" />
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBox Grid.Column="0" PlaceholderText="New profile name"
+                                         Text="{Binding NewProfileName}"
+                                         Margin="0,0,6,0"
+                                         AutomationProperties.Name="New profile name" />
+                                <Button Grid.Column="1" Content="Add"
+                                        Command="{Binding AddProfileCommand}"
+                                        AutomationProperties.Name="Add profile" />
+                            </Grid>
+                            <TextBlock Classes="caption" TextWrapping="Wrap"
+                                       Text="A new profile starts as a copy of what is running now." />
+                            <Button Content="Delete current profile"
+                                    HorizontalAlignment="Stretch"
+                                    Command="{Binding DeleteProfileCommand}"
+                                    AutomationProperties.Name="Delete profile" />
+                        </StackPanel>
+
+                        <Border Height="1" Background="{DynamicResource CardBorder}" />
+
+                        <StackPanel Spacing="10">
+                            <TextBlock Classes="caption" Text="SETTINGS" />
+
+                            <CheckBox Content="Show empty headers"
+                                      IsChecked="{Binding ShowEmptyHeaders}"
+                                      AutomationProperties.Name="Show empty headers" />
+
+                            <StackPanel Spacing="2">
+                                <CheckBox Content="Closing the window keeps Fanner running"
+                                          IsChecked="{Binding CloseToTray}"
+                                          AutomationProperties.Name="Close to tray" />
+                                <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0"
+                                           Text="Quit from the tray icon to stop it and hand every fan back to the motherboard." />
+                            </StackPanel>
+
+                            <StackPanel Spacing="2">
+                                <CheckBox Content="Start with Windows"
+                                          IsChecked="{Binding RunAtStartup}"
+                                          AutomationProperties.Name="Start with Windows" />
+                                <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0"
+                                           Text="Registers a scheduled task that starts Fanner elevated at logon, with no UAC prompt. The Run registry key cannot do this." />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <TextBlock Classes="caption" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource AccentWarn}"
+                                   Text="{Binding SettingsError}"
+                                   IsVisible="{Binding SettingsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
                     </StackPanel>
                 </ScrollViewer>

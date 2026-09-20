@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Fanner.Core.Config;
 
 /// <summary>A fan held at a fixed duty, with no curve.</summary>
@@ -28,5 +30,11 @@ public sealed record Profile
     public List<ManualDutyConfig> ManualDuties { get; init; } = [];
 
     /// <summary>True when this profile leaves every fan to the firmware.</summary>
+    /// <remarks>
+    /// Derived, so it must not reach the file. A serialiser writes every public
+    /// getter by default, which would put computed state into the config where a
+    /// reader might later mistake it for something authoritative.
+    /// </remarks>
+    [JsonIgnore]
     public bool IsEmpty => Bindings.Count == 0 && ManualDuties.Count == 0;
 }
