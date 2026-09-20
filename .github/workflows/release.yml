@@ -73,7 +73,7 @@ jobs:
         run: |
           # A literal here-string: a backtick is PowerShell's escape character, so
           # markdown code spans would be eaten by an expandable one. Actions still
-          # substitutes ${{ }} before PowerShell ever sees the script.
+          # substitutes its own expressions before PowerShell ever sees the script.
           @'
           ## Before you run it
 
