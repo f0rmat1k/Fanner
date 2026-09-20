@@ -110,4 +110,5 @@ jobs:
           dist/${{ steps.stage.outputs.name }}.sha256
           --title "Fanner ${{ github.ref_name }}"
           --notes-file notes.md
+          --generate-notes
           --verify-tag
