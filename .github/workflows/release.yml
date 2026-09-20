@@ -1,0 +1,113 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  # Needed to create the release and upload its assets.
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Derive the version from the tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          "tag=$tag" | Out-File $env:GITHUB_OUTPUT -Append
+          "version=$($tag -replace '^v', '')" | Out-File $env:GITHUB_OUTPUT -Append
+
+      - name: Test
+        run: dotnet test Fanner.slnx -c Release
+
+      # Self-contained so the download needs no .NET runtime, and NEVER trimmed:
+      # LibreHardwareMonitor finds hardware classes by reflection and Avalonia loads
+      # XAML the same way, so trimming breaks the app at runtime rather than at
+      # build time, which is the worst way to find out.
+      - name: Publish
+        run: >
+          dotnet publish src/Fanner.App/Fanner.App.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -p:PublishReadyToRun=true
+          -p:DebugType=none
+          -p:Version=${{ steps.version.outputs.version }}
+          -o publish
+
+      - name: Stage the artefacts
+        id: stage
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+
+          # Only the exe. The publish directory also holds libSkiaSharp.pdb and
+          # libHarfBuzzSharp.pdb — ~100 MB of native symbols shipped by the
+          # SkiaSharp package, which DebugType=none does not suppress.
+          $name = "Fanner-${{ steps.version.outputs.tag }}-win-x64.exe"
+          Copy-Item publish/Fanner.exe "dist/$name"
+
+          $hash = (Get-FileHash "dist/$name" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name" | Set-Content "dist/$name.sha256" -Encoding ascii
+
+          "name=$name" | Out-File $env:GITHUB_OUTPUT -Append
+          "sha256=$hash" | Out-File $env:GITHUB_OUTPUT -Append
+
+          "Published $name ($([math]::Round((Get-Item "dist/$name").Length / 1MB, 1)) MB)"
+
+      - name: Write the release notes
+        shell: pwsh
+        run: |
+          # A literal here-string: a backtick is PowerShell's escape character, so
+          # markdown code spans would be eaten by an expandable one. Actions still
+          # substitutes ${{ }} before PowerShell ever sees the script.
+          @'
+          ## Before you run it
+
+          Fanner needs two things beyond the download:
+
+          - **[PawnIO](https://pawnio.eu/)** — the signed kernel driver that reads the
+            motherboard's sensor chip. Install it once with `winget install namazso.PawnIO`.
+            Without it nothing throws and nothing is logged; every sensor simply reads
+            zero, which looks exactly like an unsupported motherboard.
+          - **Administrator rights.** Fanner starts unelevated and offers to restart
+            itself, so you get an explanation rather than a prompt out of nowhere.
+
+          Windows will warn that the publisher is unknown — the executable is not code
+          signed. Choose *More info* then *Run anyway*, or verify the checksum below.
+
+          ## Checksum
+
+          ```
+          SHA256  ${{ steps.stage.outputs.sha256 }}
+          ```
+
+          ## Notes
+
+          Self-contained, so no .NET runtime is required. Developed and tested against
+          an MSI X870 with a Nuvoton NCT6687D-R; other boards using a supported Super
+          I/O chip should work, but are untested.
+          '@ | Set-Content notes.md -Encoding utf8
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create ${{ github.ref_name }}
+          dist/${{ steps.stage.outputs.name }}
+          dist/${{ steps.stage.outputs.name }}.sha256
+          --title "Fanner ${{ github.ref_name }}"
+          --notes-file notes.md
+          --verify-tag
