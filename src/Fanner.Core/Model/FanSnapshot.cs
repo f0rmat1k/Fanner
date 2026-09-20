@@ -41,7 +41,8 @@ public sealed record FanSnapshot(
     bool CanControl,
     FanControlMode Mode,
     double MinDuty = 0,
-    double MaxDuty = 100)
+    double MaxDuty = 100,
+    HardwareCategory Category = HardwareCategory.Other)
 {
     /// <summary>
     /// True when the header is being driven but nothing is spinning — almost always

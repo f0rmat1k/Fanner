@@ -54,6 +54,12 @@ public sealed class MonitorService : IDisposable
     /// <summary>Drives bound fans from temperature curves.</summary>
     public CurveEngine Curves { get; } = new();
 
+    /// <summary>
+    /// Remembers which headers have ever turned, so a fan changing speed is not
+    /// mistaken for an empty header while it is between speeds.
+    /// </summary>
+    public FanPresenceTracker Presence { get; } = new();
+
     /// <summary>The most recent poll, or <see cref="HardwareSnapshot.Empty"/> before the first one.</summary>
     public HardwareSnapshot Latest { get; private set; } = HardwareSnapshot.Empty;
 
@@ -218,6 +224,7 @@ public sealed class MonitorService : IDisposable
                 var snapshot = _backend.Poll();
                 Latest = snapshot;
                 History.Record(snapshot);
+                Presence.Observe(snapshot);
 
                 // Act on the watchdog before telling anyone. Releasing the fans is
                 // the urgent part; the notification can wait a few microseconds.

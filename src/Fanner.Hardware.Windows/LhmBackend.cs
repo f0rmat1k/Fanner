@@ -265,7 +265,8 @@ public sealed class LhmBackend : IHardwareBackend
                 CanControl: writable is not null,
                 Mode: MapMode(writable),
                 MinDuty: writable?.MinSoftwareValue ?? 0,
-                MaxDuty: writable?.MaxSoftwareValue ?? 100));
+                MaxDuty: writable?.MaxSoftwareValue ?? 100,
+                Category: MapCategory(hardware.HardwareType)));
         }
     }
 

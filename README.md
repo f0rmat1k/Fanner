@@ -106,17 +106,25 @@ the driver mid-poll.
 
 ### Reading a fan card
 
+![Fans grouped by the hardware driving them](docs/grouping.png)
+
+Cards are grouped by the hardware driving them. The graphics card runs its own
+fans through the vendor API, while the case and CPU headers all hang off the
+board's Super I/O chip — there is no separate CPU fan controller to group under.
+
 The badge says who is driving the header: **BIOS** for the motherboard firmware,
 **MANUAL** once you have moved its slider, **CURVE** while a curve owns it. `↺`
 gives one fan back; **Restore all to BIOS** gives back everything and appears
 whenever any fan is held.
 
 Headers that are being driven but report no tachometer are hidden: they are almost
-certainly empty. This board exposes ten and six are wired. A fan at **0 % duty** is
-*not* hidden — it is stopped, not absent, and hiding it would make a fan you just
-turned off disappear. A header we have driven to a standstill is flagged
-**STOPPED** and outlined, because that is the one outcome of a drag that can cost
-hardware.
+certainly empty. This board exposes ten and six are wired. A header that has
+**ever** reported rotation is never hidden, however still it looks right now — a
+fan between speeds is driven yet stationary for a few seconds, which on its own
+reads identically to an empty header. A fan at **0 % duty** is not hidden either:
+it is stopped, not absent, and hiding it would make a fan you just turned off
+disappear. A header we have driven to a standstill is flagged **STOPPED** and
+outlined, because that is the one outcome of a drag that can cost hardware.
 
 ### Why the number lags the slider
 
@@ -206,15 +214,6 @@ back on the way out, and the release runs on the hardware thread before the UI i
 even told, so a hung window cannot delay it. The one case it cannot cover is the
 process being killed outright — no user-mode program survives `TerminateProcess`.
 The firmware resumes control on the next reboot regardless.
-
-## Roadmap
-
-- [x] Read fans, duty cycles and temperatures; live charts
-- [x] Detect and explain missing driver or missing rights
-- [x] Manual duty slider per fan, with a "return control to BIOS" button
-- [x] Temperature watchdog
-- [x] Temperature-to-speed curves, saved between runs
-- [x] Profiles, tray icon, run at startup
 
 ## Licence
 
