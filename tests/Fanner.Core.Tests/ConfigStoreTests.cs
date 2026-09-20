@@ -170,6 +170,25 @@ public class ConfigStoreTests : IDisposable
     }
 
     [Fact]
+    public void Does_not_write_derived_properties()
+    {
+        var store = new ConfigStore(ConfigPath);
+        store.Save(WithOneProfile());
+
+        var json = File.ReadAllText(ConfigPath);
+
+        // A serialiser writes every public getter unless told otherwise, which put
+        // a computed flag and a duplicate copy of the whole active profile into the
+        // file — noise a later reader could mistake for authoritative state.
+        Assert.DoesNotContain("isEmpty", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\"active\"", json, StringComparison.OrdinalIgnoreCase);
+
+        // The real fields are still there.
+        Assert.Contains("activeProfile", json, StringComparison.Ordinal);
+        Assert.Contains("\"Gaming\"", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Leaves_no_temporary_file_behind()
     {
         var store = new ConfigStore(ConfigPath);
