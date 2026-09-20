@@ -144,7 +144,11 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>Raised when the set of profiles or the active one changes, for the tray menu.</summary>
     public event EventHandler? ProfilesChanged;
 
-    public ObservableCollection<FanViewModel> Fans { get; } = [];
+    /// <summary>
+    /// Fans grouped by the hardware they hang off, so the graphics card does not sit
+    /// in the same heap as the case headers.
+    /// </summary>
+    public ObservableCollection<FanGroupViewModel> FanGroups { get; } = [];
 
     public ObservableCollection<SensorViewModel> Temperatures { get; } = [];
 
@@ -767,7 +771,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             }
 
             viewModel.Order = i;
-            viewModel.Update(fan, history);
+            viewModel.Update(fan, history, _monitor?.Presence.IsEmpty(fan) ?? fan.LooksUnpopulated);
             viewModel.IsCurveDriven = _monitor?.Curves.For(fan.Id) is not null;
             viewModel.CurveTarget = _monitor?.Curves.LastDutyFor(fan.Id);
         }
@@ -806,28 +810,55 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// Brings the bound list in line with the filter, touching it only when the
-    /// membership actually changed — rebuilding every second would fight the user's
-    /// scroll position and selection.
+    /// Brings the grouped list in line with the filter.
     /// </summary>
+    /// <remarks>
+    /// Rebuilt only when the membership actually changed. Replacing it every second
+    /// would fight the user's scroll position and drop the card they are reaching
+    /// for.
+    /// </remarks>
     private void SyncFans()
     {
         var desired = _fansById.Values
             .Where(f => ShowEmptyHeaders || !f.IsEmptyHeader)
-            .OrderBy(f => f.HardwareName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(f => f.Order)
+            .GroupBy(f => f.HardwareName, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new
+            {
+                Key = g.Key,
+                Category = g.First().Category,
+                Fans = g.OrderBy(f => f.Order).ToList(),
+            })
+            .Select(g => new
+            {
+                g.Key,
+                g.Category,
+                g.Fans,
+                Group = new FanGroupViewModel(g.Key, g.Category, g.Key),
+            })
+            .OrderBy(g => g.Group.SortOrder)
+            .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        if (Fans.SequenceEqual(desired))
+        var unchanged = FanGroups.Count == desired.Count
+            && FanGroups.Zip(desired).All(pair =>
+                pair.First.Key == pair.Second.Key
+                && pair.First.Fans.SequenceEqual(pair.Second.Fans));
+
+        if (unchanged)
         {
             return;
         }
 
-        Fans.Clear();
+        FanGroups.Clear();
 
-        foreach (var fan in desired)
+        foreach (var entry in desired)
         {
-            Fans.Add(fan);
+            foreach (var fan in entry.Fans)
+            {
+                entry.Group.Fans.Add(fan);
+            }
+
+            FanGroups.Add(entry.Group);
         }
     }
 
@@ -860,8 +891,9 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     {
         _fansById.Clear();
         _sensorsById.Clear();
-        Fans.Clear();
+        FanGroups.Clear();
         Temperatures.Clear();
+        _monitor?.Presence.Clear();
 
         // The editor points at view models and hardware ids from the old backend.
         CurveEditor = null;

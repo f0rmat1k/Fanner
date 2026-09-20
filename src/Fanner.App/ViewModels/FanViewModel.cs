@@ -59,6 +59,9 @@ public sealed partial class FanViewModel : ViewModelBase
     public partial string HardwareName { get; set; } = string.Empty;
 
     [ObservableProperty]
+    public partial HardwareCategory Category { get; set; }
+
+    [ObservableProperty]
     public partial int? Rpm { get; set; }
 
     /// <summary>What the hardware currently reports. Display only.</summary>
@@ -78,8 +81,13 @@ public sealed partial class FanViewModel : ViewModelBase
     [ObservableProperty]
     public partial FanControlMode Mode { get; set; }
 
+    /// <summary>
+    /// Whether this header looks empty. Decided by the monitor, not by a single
+    /// reading: a fan between speeds is driven yet still, which on its own is
+    /// indistinguishable from nothing being plugged in.
+    /// </summary>
     [ObservableProperty]
-    public partial bool LooksUnpopulated { get; set; }
+    public partial bool IsEmptyHeader { get; set; }
 
     [ObservableProperty]
     public partial double MinDuty { get; set; }
@@ -168,8 +176,6 @@ public sealed partial class FanViewModel : ViewModelBase
 
     public string TargetDisplay => EffectiveTarget is { } target ? $"→ {target:0} %" : string.Empty;
 
-    public bool IsEmptyHeader => LooksUnpopulated;
-
     /// <summary>
     /// We are driving this header and nothing is turning. Worth flagging loudly: it
     /// is the one outcome of dragging a slider that can cost hardware, and unlike an
@@ -180,7 +186,7 @@ public sealed partial class FanViewModel : ViewModelBase
     /// <summary>Whether the slider should respond at all.</summary>
     public bool IsSliderEnabled => IsSliderAvailable;
 
-    public void Update(FanSnapshot snapshot, SensorHistory history)
+    public void Update(FanSnapshot snapshot, SensorHistory history, bool isEmptyHeader)
     {
         Name = snapshot.Name;
         HardwareName = snapshot.HardwareName;
@@ -188,7 +194,8 @@ public sealed partial class FanViewModel : ViewModelBase
         DutyPercent = snapshot.DutyPercent;
         CanControl = snapshot.CanControl;
         Mode = snapshot.Mode;
-        LooksUnpopulated = snapshot.LooksUnpopulated;
+        IsEmptyHeader = isEmptyHeader;
+        Category = snapshot.Category;
         MinDuty = snapshot.MinDuty;
         MaxDuty = snapshot.MaxDuty;
 
@@ -312,5 +319,4 @@ public sealed partial class FanViewModel : ViewModelBase
         OnPropertyChanged(nameof(TargetDisplay));
     }
 
-    partial void OnLooksUnpopulatedChanged(bool value) => OnPropertyChanged(nameof(IsEmptyHeader));
 }

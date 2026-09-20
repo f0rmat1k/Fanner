@@ -136,98 +136,118 @@
             <Grid Grid.Column="0" RowDefinitions="*,Auto" Margin="0,0,16,0">
 
                 <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled">
-                    <ItemsControl ItemsSource="{Binding Fans}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <WrapPanel />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
+                    <ItemsControl ItemsSource="{Binding FanGroups}">
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:FanViewModel">
-                                <Border Classes="card"
-                                        Classes.empty="{Binding IsEmptyHeader}"
-                                        Classes.stopped="{Binding IsStoppedByUs}"
-                                        Width="238" Height="208" Margin="0,0,10,10">
-                                    <Grid RowDefinitions="Auto,Auto,*,Auto">
+                            <DataTemplate x:DataType="vm:FanGroupViewModel">
+                                <StackPanel Margin="0,0,0,8">
 
-                                        <StackPanel Grid.Row="0" Spacing="1">
-                                            <Grid ColumnDefinitions="*,Auto">
-                                                <TextBlock Grid.Column="0" Classes="h2"
-                                                           Text="{Binding Name}"
-                                                           TextTrimming="CharacterEllipsis" />
-                                                <Border Grid.Column="1" Classes="badge"
-                                                        Classes.warn="{Binding IsSoftwareControlled}">
-                                                    <TextBlock Classes="caption" Text="{Binding ModeDisplay}" />
+                                    <!-- Grouped by hardware: the graphics card drives
+                                         its own fans through the vendor API, while the
+                                         case and CPU headers all hang off the board's
+                                         Super I/O chip. -->
+                                    <StackPanel Orientation="Horizontal" Spacing="8"
+                                                Margin="2,0,0,8">
+                                        <TextBlock Classes="h2" Text="{Binding Title}" />
+                                        <TextBlock Classes="caption" VerticalAlignment="Center"
+                                                   Text="{Binding HardwareName}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+
+                                    <ItemsControl ItemsSource="{Binding Fans}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:FanViewModel">
+                                                <Border Classes="card"
+                                                        Classes.empty="{Binding IsEmptyHeader}"
+                                                        Classes.stopped="{Binding IsStoppedByUs}"
+                                                        Width="226" Height="192" Margin="0,0,10,10">
+                                                    <Grid RowDefinitions="Auto,Auto,*,Auto">
+                
+                                                        <StackPanel Grid.Row="0" Spacing="1">
+                                                            <Grid ColumnDefinitions="*,Auto">
+                                                                <TextBlock Grid.Column="0" Classes="h2"
+                                                                           Text="{Binding Name}"
+                                                                           TextTrimming="CharacterEllipsis" />
+                                                                <Border Grid.Column="1" Classes="badge"
+                                                                        Classes.warn="{Binding IsSoftwareControlled}">
+                                                                    <TextBlock Classes="caption" Text="{Binding ModeDisplay}" />
+                                                                </Border>
+                                                            </Grid>
+                                                        </StackPanel>
+                
+                                                        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,8,0,0">
+                                                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                                                <TextBlock Classes="metric" Text="{Binding RpmDisplay}" />
+                                                                <Border Classes="badge warn" VerticalAlignment="Center"
+                                                                        IsVisible="{Binding IsStoppedByUs}">
+                                                                    <TextBlock Classes="caption" Text="STOPPED" />
+                                                                </Border>
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="1" VerticalAlignment="Bottom"
+                                                                        HorizontalAlignment="Right">
+                                                                <TextBlock Classes="caption" Text="duty"
+                                                                           HorizontalAlignment="Right" />
+                                                                <StackPanel Orientation="Horizontal" Spacing="4"
+                                                                            HorizontalAlignment="Right">
+                                                                    <TextBlock Classes="h2" Text="{Binding DutyDisplay}" />
+                                                                    <!-- The chip slews to a new duty over ~10 s, so
+                                                                         show where it is heading or the reading looks
+                                                                         like the write was ignored. -->
+                                                                    <TextBlock Classes="h2" Text="{Binding TargetDisplay}"
+                                                                               Foreground="{DynamicResource AccentWarn}"
+                                                                               IsVisible="{Binding IsSlewing}" />
+                                                                </StackPanel>
+                                                            </StackPanel>
+                                                        </Grid>
+                
+                                                        <!-- RPM autoscales; duty is pinned to 0-100 so a
+                                                             steady 60% reads as steady, not as noise. -->
+                                                        <Grid Grid.Row="2" Margin="0,8,0,0">
+                                                            <controls:Sparkline Values="{Binding DutyHistory}"
+                                                                                Stroke="{DynamicResource AccentDuty}"
+                                                                                StrokeThickness="1"
+                                                                                Minimum="0" Maximum="100" />
+                                                            <controls:Sparkline Values="{Binding RpmHistory}"
+                                                                                Stroke="{DynamicResource AccentRpm}" />
+                                                        </Grid>
+                
+                                                        <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto" Margin="0,8,0,0">
+                                                            <Slider Grid.Column="0"
+                                                                    Value="{Binding TargetDuty, Mode=TwoWay}"
+                                                                    Minimum="{Binding MinDuty}"
+                                                                    Maximum="{Binding MaxDuty}"
+                                                                    IsEnabled="{Binding IsSliderEnabled}"
+                                                                    AutomationProperties.Name="{Binding Name}"
+                                                                    VerticalAlignment="Center"
+                                                                    Margin="0,0,6,0" />
+                                                            <Button Grid.Column="1" Classes="revert"
+                                                                    Content="&#x223F;"
+                                                                    VerticalAlignment="Center"
+                                                                    IsEnabled="{Binding CanControl}"
+                                                                    Command="{Binding OpenCurveCommand}"
+                                                                    AutomationProperties.Name="{Binding Name, StringFormat='Edit curve for {0}'}"
+                                                                    ToolTip.Tip="Drive this fan from a temperature curve"
+                                                                    Margin="0,0,4,0" />
+                                                            <Button Grid.Column="2" Classes="revert"
+                                                                    Content="&#x21ba;"
+                                                                    VerticalAlignment="Center"
+                                                                    IsEnabled="{Binding IsSoftwareControlled}"
+                                                                    Command="{Binding ReleaseToFirmwareCommand}"
+                                                                    AutomationProperties.Name="{Binding Name, StringFormat='Return {0} to BIOS'}"
+                                                                    ToolTip.Tip="Give this fan back to the motherboard" />
+                                                        </Grid>
+                
+                                                    </Grid>
                                                 </Border>
-                                            </Grid>
-                                            <TextBlock Classes="caption" Text="{Binding HardwareName}"
-                                                       TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
 
-                                        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,8,0,0">
-                                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
-                                                <TextBlock Classes="metric" Text="{Binding RpmDisplay}" />
-                                                <Border Classes="badge warn" VerticalAlignment="Center"
-                                                        IsVisible="{Binding IsStoppedByUs}">
-                                                    <TextBlock Classes="caption" Text="STOPPED" />
-                                                </Border>
-                                            </StackPanel>
-                                            <StackPanel Grid.Column="1" VerticalAlignment="Bottom"
-                                                        HorizontalAlignment="Right">
-                                                <TextBlock Classes="caption" Text="duty"
-                                                           HorizontalAlignment="Right" />
-                                                <StackPanel Orientation="Horizontal" Spacing="4"
-                                                            HorizontalAlignment="Right">
-                                                    <TextBlock Classes="h2" Text="{Binding DutyDisplay}" />
-                                                    <!-- The chip slews to a new duty over ~10 s, so
-                                                         show where it is heading or the reading looks
-                                                         like the write was ignored. -->
-                                                    <TextBlock Classes="h2" Text="{Binding TargetDisplay}"
-                                                               Foreground="{DynamicResource AccentWarn}"
-                                                               IsVisible="{Binding IsSlewing}" />
-                                                </StackPanel>
-                                            </StackPanel>
-                                        </Grid>
-
-                                        <!-- RPM autoscales; duty is pinned to 0-100 so a
-                                             steady 60% reads as steady, not as noise. -->
-                                        <Grid Grid.Row="2" Margin="0,8,0,0">
-                                            <controls:Sparkline Values="{Binding DutyHistory}"
-                                                                Stroke="{DynamicResource AccentDuty}"
-                                                                StrokeThickness="1"
-                                                                Minimum="0" Maximum="100" />
-                                            <controls:Sparkline Values="{Binding RpmHistory}"
-                                                                Stroke="{DynamicResource AccentRpm}" />
-                                        </Grid>
-
-                                        <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto" Margin="0,8,0,0">
-                                            <Slider Grid.Column="0"
-                                                    Value="{Binding TargetDuty, Mode=TwoWay}"
-                                                    Minimum="{Binding MinDuty}"
-                                                    Maximum="{Binding MaxDuty}"
-                                                    IsEnabled="{Binding IsSliderEnabled}"
-                                                    AutomationProperties.Name="{Binding Name}"
-                                                    VerticalAlignment="Center"
-                                                    Margin="0,0,6,0" />
-                                            <Button Grid.Column="1" Classes="revert"
-                                                    Content="&#x223F;"
-                                                    VerticalAlignment="Center"
-                                                    IsEnabled="{Binding CanControl}"
-                                                    Command="{Binding OpenCurveCommand}"
-                                                    AutomationProperties.Name="{Binding Name, StringFormat='Edit curve for {0}'}"
-                                                    ToolTip.Tip="Drive this fan from a temperature curve"
-                                                    Margin="0,0,4,0" />
-                                            <Button Grid.Column="2" Classes="revert"
-                                                    Content="&#x21ba;"
-                                                    VerticalAlignment="Center"
-                                                    IsEnabled="{Binding IsSoftwareControlled}"
-                                                    Command="{Binding ReleaseToFirmwareCommand}"
-                                                    AutomationProperties.Name="{Binding Name, StringFormat='Return {0} to BIOS'}"
-                                                    ToolTip.Tip="Give this fan back to the motherboard" />
-                                        </Grid>
-
-                                    </Grid>
-                                </Border>
+                                </StackPanel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

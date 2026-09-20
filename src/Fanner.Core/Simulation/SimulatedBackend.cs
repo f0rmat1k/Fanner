@@ -4,31 +4,40 @@ using Fanner.Core.Model;
 namespace Fanner.Core.Simulation;
 
 /// <summary>
-/// A fake backend that models a real board, so the UI can be built and demoed
+/// A fake backend that models a real machine, so the UI can be built and demoed
 /// without elevation, without a driver, and without spinning anything down.
 /// </summary>
 /// <remarks>
 /// Deliberately mirrors the MSI X870 / NCT6687D-R this project targets, including
 /// the awkward parts: non-contiguous header indices, empty headers that report
-/// 0 RPM, and a pump header pinned at 100. Code that only ever meets tidy data
-/// tends to break the first time it meets the real chip.
+/// 0 RPM, a pump header pinned at 100, GPU fans that idle stopped and refuse any
+/// duty under 30, a duty cycle that travels to its target instead of jumping, and
+/// fans that stop turning well before the duty reaches zero. Code that only ever
+/// meets tidy data tends to break the first time it meets the real chip.
 /// </remarks>
 public sealed class SimulatedBackend : IHardwareBackend
 {
     private const string ChipName = "Nuvoton NCT6687D-R (simulated)";
+    private const string CpuName = "AMD Ryzen 7 9800X3D (simulated)";
+    private const string GpuName = "NVIDIA GeForce RTX 4090 (simulated)";
 
     private readonly List<FakeFan> _fans =
     [
-        new(0, "CPU Fan", maxRpm: 2200, populated: true, duty: 40),
-        new(1, "Pump Fan #1", maxRpm: 4800, populated: false, duty: 100),
-        new(2, "Chipset Fan", maxRpm: 5000, populated: false, duty: 50),
-        new(3, "EZ-Connect Fan", maxRpm: 1800, populated: false, duty: 60),
-        new(10, "System Fan #1", maxRpm: 1900, populated: true, duty: 60),
-        new(11, "System Fan #2", maxRpm: 1900, populated: true, duty: 60),
-        new(12, "System Fan #3", maxRpm: 1900, populated: true, duty: 60),
-        new(13, "System Fan #4", maxRpm: 1900, populated: true, duty: 60),
-        new(14, "System Fan #5", maxRpm: 1900, populated: false, duty: 60),
-        new(15, "System Fan #6", maxRpm: 1900, populated: true, duty: 60),
+        new(Header(0), "CPU Fan", ChipName, HardwareCategory.Motherboard, 2200, populated: true, duty: 40),
+        new(Header(1), "Pump Fan #1", ChipName, HardwareCategory.Motherboard, 4800, populated: false, duty: 100),
+        new(Header(2), "Chipset Fan", ChipName, HardwareCategory.Motherboard, 5000, populated: false, duty: 50),
+        new(Header(3), "EZ-Connect Fan", ChipName, HardwareCategory.Motherboard, 1800, populated: false, duty: 60),
+        new(Header(10), "System Fan #1", ChipName, HardwareCategory.Motherboard, 1900, populated: true, duty: 60),
+        new(Header(11), "System Fan #2", ChipName, HardwareCategory.Motherboard, 1900, populated: true, duty: 60),
+        new(Header(12), "System Fan #3", ChipName, HardwareCategory.Motherboard, 1900, populated: true, duty: 60),
+        new(Header(13), "System Fan #4", ChipName, HardwareCategory.Motherboard, 1900, populated: true, duty: 60),
+        new(Header(14), "System Fan #5", ChipName, HardwareCategory.Motherboard, 1900, populated: false, duty: 60),
+        new(Header(15), "System Fan #6", ChipName, HardwareCategory.Motherboard, 1900, populated: true, duty: 60),
+
+        // Idle at a standstill and refusing anything under 30, exactly as an NVIDIA
+        // card reports itself.
+        new("/sim/gpu-nvidia/0/header/1", "GPU Fan 1", GpuName, HardwareCategory.Gpu, 3000, populated: true, duty: 0, minDuty: 30),
+        new("/sim/gpu-nvidia/0/header/2", "GPU Fan 2", GpuName, HardwareCategory.Gpu, 3000, populated: true, duty: 0, minDuty: 30),
     ];
 
     private readonly Random _random = new(20260920);
@@ -38,7 +47,7 @@ public sealed class SimulatedBackend : IHardwareBackend
 
     public bool SupportsControl => true;
 
-    public BackendStatus Initialize() => BackendStatus.Ok([ChipName, "AMD Ryzen 7 9800X3D (simulated)"]);
+    public BackendStatus Initialize() => BackendStatus.Ok([ChipName, CpuName, GpuName]);
 
     public HardwareSnapshot Poll()
     {
@@ -49,10 +58,7 @@ public sealed class SimulatedBackend : IHardwareBackend
         var cpuTemp = 48 + 14 * Math.Sin(elapsed / 37.0) + _random.NextDouble() * 1.5;
         var systemTemp = 38 + 5 * Math.Sin(elapsed / 61.0) + _random.NextDouble();
 
-        var fans = _fans.Select(f => f.Snapshot(ChipName, _random)).ToList();
-
-        const string CpuName = "AMD Ryzen 7 9800X3D (simulated)";
-        const string GpuName = "NVIDIA GeForce RTX 4090 (simulated)";
+        var fans = _fans.Select(f => f.Snapshot(_random)).ToList();
 
         var temperatures = new List<SensorReading>
         {
@@ -75,7 +81,7 @@ public sealed class SimulatedBackend : IHardwareBackend
         return new HardwareSnapshot(DateTimeOffset.Now, fans, temperatures, others);
     }
 
-    public void SetDuty(string fanId, double percent) => Find(fanId).Duty = Math.Clamp(percent, 0, 100);
+    public void SetDuty(string fanId, double percent) => Find(fanId).Aim(percent);
 
     public void ReleaseToFirmware(string fanId) => Find(fanId).ReleaseToFirmware();
 
@@ -87,6 +93,8 @@ public sealed class SimulatedBackend : IHardwareBackend
         }
     }
 
+    private static string Header(int index) => $"/sim/lpc/nct6687dr/0/header/{index}";
+
     private FakeFan Find(string fanId) =>
         _fans.FirstOrDefault(f => f.Id == fanId)
         ?? throw new NotSupportedException($"Unknown fan header '{fanId}'.");
@@ -95,7 +103,15 @@ public sealed class SimulatedBackend : IHardwareBackend
     {
     }
 
-    private sealed class FakeFan(int index, string name, int maxRpm, bool populated, double duty)
+    private sealed class FakeFan(
+        string id,
+        string name,
+        string hardwareName,
+        HardwareCategory category,
+        int maxRpm,
+        bool populated,
+        double duty,
+        double minDuty = 0)
     {
         /// <summary>
         /// How fast the duty cycle travels towards its target, in percent per second.
@@ -108,25 +124,35 @@ public sealed class SimulatedBackend : IHardwareBackend
         /// </remarks>
         private const double SlewPercentPerSecond = 2;
 
+        /// <summary>Duty below which a turning fan coasts to a stop.</summary>
+        private const double StallDuty = 20;
+
+        /// <summary>
+        /// Duty a stopped fan needs before it starts turning again.
+        /// </summary>
+        /// <remarks>
+        /// Higher than <see cref="StallDuty"/>, because breaking away from rest takes
+        /// more torque than staying in motion. That gap is the whole reason kickstart
+        /// exists, and it also creates the moments where a fan is driven yet reports
+        /// nothing — which is exactly what an empty header looks like.
+        /// </remarks>
+        private const double StartDuty = 35;
+
         private double _duty = duty;
         private double _target = duty;
+        private bool _spinning = duty >= StartDuty;
         private DateTime _lastStep = DateTime.UtcNow;
 
-        public string Id { get; } = $"/sim/lpc/nct6687dr/0/header/{index}";
+        public string Id { get; } = id;
 
-        public double FirmwareDuty { get; } = duty;
+        private double FirmwareDuty { get; } = duty;
 
-        public bool IsSoftwareControlled { get; set; }
+        private bool IsSoftwareControlled { get; set; }
 
-        /// <summary>Where the duty is headed. Reads back the value actually reached.</summary>
-        public double Duty
+        public void Aim(double percent)
         {
-            get => _duty;
-            set
-            {
-                _target = value;
-                IsSoftwareControlled = true;
-            }
+            _target = Math.Clamp(percent, minDuty, 100);
+            IsSoftwareControlled = true;
         }
 
         /// <summary>
@@ -137,6 +163,39 @@ public sealed class SimulatedBackend : IHardwareBackend
         {
             IsSoftwareControlled = false;
             _target = FirmwareDuty;
+        }
+
+        public FanSnapshot Snapshot(Random random)
+        {
+            Step();
+
+            if (_spinning && _duty < StallDuty)
+            {
+                _spinning = false;
+            }
+            else if (!_spinning && _duty >= StartDuty)
+            {
+                _spinning = true;
+            }
+
+            // An empty header reads 0 RPM whatever the duty says — the same trap the
+            // real board sets, where 0 RPM means "nothing plugged in" far more often
+            // than "fan stopped".
+            int? rpm = populated && _spinning
+                ? (int)Math.Round(maxRpm * (_duty / 100.0) * (0.97 + random.NextDouble() * 0.06))
+                : 0;
+
+            return new FanSnapshot(
+                Id: Id,
+                Name: name,
+                HardwareName: hardwareName,
+                Rpm: rpm,
+                DutyPercent: Math.Round(_duty),
+                CanControl: true,
+                Mode: IsSoftwareControlled ? FanControlMode.Software : FanControlMode.Firmware,
+                MinDuty: minDuty,
+                MaxDuty: 100,
+                Category: category);
         }
 
         /// <summary>Moves the duty towards its target by however long has elapsed.</summary>
@@ -152,27 +211,6 @@ public sealed class SimulatedBackend : IHardwareBackend
             _duty = Math.Abs(remaining) <= travel
                 ? _target
                 : _duty + Math.Sign(remaining) * travel;
-        }
-
-        public FanSnapshot Snapshot(string chipName, Random random)
-        {
-            Step();
-
-            // An empty header reads 0 RPM whatever the duty says — the same trap the
-            // real board sets, where 0 RPM means "nothing plugged in" far more often
-            // than "fan stopped".
-            int? rpm = populated
-                ? (int)Math.Round(maxRpm * (_duty / 100.0) * (0.97 + random.NextDouble() * 0.06))
-                : 0;
-
-            return new FanSnapshot(
-                Id: Id,
-                Name: name,
-                HardwareName: chipName,
-                Rpm: rpm,
-                DutyPercent: Math.Round(_duty),
-                CanControl: true,
-                Mode: IsSoftwareControlled ? FanControlMode.Software : FanControlMode.Firmware);
         }
     }
 }
