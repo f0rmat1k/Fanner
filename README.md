@@ -1,5 +1,7 @@
 # Fanner
 
+**English** · [Русский](README.ru.md)
+
 A GUI for the fans on your motherboard. Windows, .NET 10, Avalonia.
 
 Reads every fan header and temperature, drives any header manually or from a
@@ -7,61 +9,73 @@ temperature curve, keeps named profiles, and can start with Windows.
 
 ![Fanner running a temperature curve on an MSI X870 board](docs/screenshot.png)
 
-**[Download the latest release](https://github.com/f0rmat1k/Fanner/releases/latest)** — a single
-self-contained executable. Read [Requirements](#requirements) first: it needs the PawnIO
-driver and administrator rights.
-
-## What it talks to
+## Will it work on your board?
 
 On a desktop board, fan control is not a vendor feature — it is a Super I/O chip.
 Fanner reaches it through [LibreHardwareMonitor][lhm], which covers the common
 Nuvoton and ITE parts. Developed against an MSI X870 GAMING PLUS WIFI with a
 **Nuvoton NCT6687D-R**, which is what most of MSI's current desktop range uses, so
-support is broad rather than board-specific.
+support is broad rather than board-specific. Other supported chips should work but
+are untested; Fanner says plainly at startup if it finds none.
 
 GPU fans come along for free through the vendor APIs.
 
 MSI *laptops* are a different path entirely — vendor WMI and EC registers, not LPC.
 Fanner does not handle those.
 
-## Requirements
+## Install
 
-- Windows 10 or 11, x64
-- **[PawnIO][pawnio]**, a separate install — see below
-- Administrator rights
+**There is no installer.** Fanner is a single self-contained executable: put it
+wherever you like and run it. It carries its own .NET runtime, so nothing else has
+to be installed for it — but the exe alone is not enough. Two things are needed.
 
-The released executable is self-contained, so it needs no .NET runtime.
-Building from source needs the [.NET 10 SDK][dotnet].
+### 1. The PawnIO driver
 
-### About the driver
-
-Reading a Super I/O chip means port I/O from ring 0, which needs a kernel driver.
-Fanner uses **PawnIO**: signed, and compatible with Memory Integrity (HVCI), so
-nothing about your system's security has to be turned off to run it. It replaces
-WinRing0, which is deprecated, flagged by Defender, and on Microsoft's vulnerable
-driver blocklist — on a current Windows 11 install it would not load at all.
-
-Install it once:
+Reading a Super I/O chip means port I/O from ring 0, which no program can do on its
+own. Install the driver once:
 
 ```powershell
 winget install namazso.PawnIO
 ```
 
-Or get `PawnIO_setup.exe` from [pawnio.eu][pawnio] and run `-install`.
+Or get `PawnIO_setup.exe` from [pawnio.eu][pawnio] and run it with `-install`.
 
-Without it, nothing throws and nothing is logged — every ring-0 read just returns
+Without it nothing throws and nothing is logged — every ring-0 read simply returns
 zero, which looks exactly like an unsupported motherboard. Fanner checks for the
-driver at startup and says so rather than showing you an empty list.
+driver at startup and tells you, rather than showing an empty list.
 
-## Running
+PawnIO is signed and compatible with Memory Integrity (HVCI), so no security feature
+has to be turned off. It replaces WinRing0, which is deprecated, flagged by Defender
+and on Microsoft's vulnerable driver blocklist — on a current Windows 11 install
+that one would not load at all.
+
+### 2. Administrator rights
+
+Fanner starts unelevated on purpose: you get a window explaining what it cannot do
+and a button to restart with rights, rather than a UAC prompt before you have seen
+anything.
+
+### Then download it
+
+Grab `Fanner-<version>-win-x64.exe` from the
+**[latest release](https://github.com/f0rmat1k/Fanner/releases/latest)**. Windows
+requires 10 or 11, x64.
+
+The executable is not code signed, so Windows will say the publisher is unknown:
+choose *More info* then *Run anyway*. If you would rather check it than trust it,
+every release ships a `.sha256` beside the exe:
+
+```powershell
+Get-FileHash .\Fanner-v0.3.0-win-x64.exe -Algorithm SHA256
+```
+
+## Building from source
+
+Needs the [.NET 10 SDK][dotnet].
 
 ```powershell
 dotnet run --project src/Fanner.App
 ```
-
-Fanner starts unelevated on purpose: you get a window that explains what it cannot
-do and a button to restart with rights, instead of a UAC prompt before you have seen
-anything.
 
 To work on the UI with no driver, no elevation and no risk to your fans:
 
@@ -70,7 +84,8 @@ dotnet run --project src/Fanner.App -- --simulate
 ```
 
 The simulated board mirrors the real one, awkward parts included — non-contiguous
-header indices, headers that report a duty but never spin.
+header indices, headers that report a duty but never spin, and a duty cycle that
+travels to its target instead of jumping.
 
 ```powershell
 dotnet test
@@ -92,8 +107,9 @@ the driver mid-poll.
 ### Reading a fan card
 
 The badge says who is driving the header: **BIOS** for the motherboard firmware,
-**FANNER** once you have moved its slider. `↺` gives one fan back; **Restore all to
-BIOS** gives back everything and appears whenever any fan is held.
+**MANUAL** once you have moved its slider, **CURVE** while a curve owns it. `↺`
+gives one fan back; **Restore all to BIOS** gives back everything and appears
+whenever any fan is held.
 
 Headers that are being driven but report no tachometer are hidden: they are almost
 certainly empty. This board exposes ten and six are wired. A fan at **0 % duty** is
