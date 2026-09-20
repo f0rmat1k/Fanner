@@ -7,6 +7,10 @@ temperature curve, keeps named profiles, and can start with Windows.
 
 ![Fanner running a temperature curve on an MSI X870 board](docs/screenshot.png)
 
+**[Download the latest release](https://github.com/f0rmat1k/Fanner/releases/latest)** — a single
+self-contained executable. Read [Requirements](#requirements) first: it needs the PawnIO
+driver and administrator rights.
+
 ## What it talks to
 
 On a desktop board, fan control is not a vendor feature — it is a Super I/O chip.
@@ -23,9 +27,11 @@ Fanner does not handle those.
 ## Requirements
 
 - Windows 10 or 11, x64
-- [.NET 10 desktop runtime][dotnet] (or the SDK, to build)
-- **[PawnIO][pawnio]**, a separate install
+- **[PawnIO][pawnio]**, a separate install — see below
 - Administrator rights
+
+The released executable is self-contained, so it needs no .NET runtime.
+Building from source needs the [.NET 10 SDK][dotnet].
 
 ### About the driver
 
@@ -196,8 +202,11 @@ The firmware resumes control on the next reboot regardless.
 
 ## Licence
 
-`Fanner.Hardware.Windows` links [LibreHardwareMonitorLib][lhm] (MPL-2.0). MPL is
-file-level copyleft, so the rest of the codebase is unaffected.
+Fanner is MIT licensed — see [LICENSE](LICENSE).
+
+`Fanner.Hardware.Windows` links [LibreHardwareMonitorLib][lhm], which is MPL-2.0.
+MPL is file-level copyleft: it covers that library's own files, not the code that
+uses it, so the rest of this repository stays under MIT.
 
 [lhm]: https://github.com/LibreHardwareMonitor/LibreHardwareMonitor
 [pawnio]: https://pawnio.eu/
