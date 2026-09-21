@@ -35,8 +35,11 @@ public sealed class LhmBackend : IHardwareBackend
     /// <summary>Control channel per fan header id, for writes.</summary>
     private readonly Dictionary<string, IControl> _controls = [];
 
-    /// <summary>Headers we have taken over, so shutdown knows what to hand back.</summary>
-    private readonly HashSet<string> _engaged = [];
+    /// <summary>
+    /// Headers we have taken over and the duty we last wrote to each, so shutdown
+    /// knows what to hand back and <see cref="ReassertControl"/> knows what to write.
+    /// </summary>
+    private readonly Dictionary<string, double> _engaged = [];
 
     private bool _opened;
     private bool _disposed;
@@ -177,8 +180,48 @@ public sealed class LhmBackend : IHardwareBackend
         var clamped = Math.Clamp(percent, control.MinSoftwareValue, control.MaxSoftwareValue);
 
         control.SetSoftware((float)clamped);
-        _engaged.Add(fanId);
+        _engaged[fanId] = clamped;
     }
+
+    public void ReassertControl()
+    {
+        foreach (var (fanId, duty) in _engaged.ToArray())
+        {
+            if (!_controls.TryGetValue(fanId, out var control))
+            {
+                continue;
+            }
+
+            try
+            {
+                // LibreHardwareMonitor drops a write that repeats the value it
+                // already holds — it compares against its own field and never
+                // reaches the chip. That is exactly the case here, since the duty we
+                // want is the one we asked for before the machine slept, so the
+                // value has to be moved before it can be written back.
+                control.SetSoftware((float)Nudge(duty, control));
+                control.SetSoftware((float)duty);
+            }
+            catch
+            {
+                // One header failing must not leave the others on the BIOS curve.
+            }
+        }
+    }
+
+    /// <summary>
+    /// A duty one step away from <paramref name="duty"/>, staying inside what the
+    /// header accepts.
+    /// </summary>
+    /// <remarks>
+    /// Half a percent, which is a different byte once scaled to the chip's 0–255
+    /// range but far too small a change to hear. Direction depends on the ends of
+    /// the range: nudging a fan pinned at 100 has to go down.
+    /// </remarks>
+    private static double Nudge(double duty, IControl control) =>
+        duty + 0.5 <= control.MaxSoftwareValue
+            ? duty + 0.5
+            : Math.Max(duty - 0.5, control.MinSoftwareValue);
 
     public void ReleaseToFirmware(string fanId)
     {
@@ -192,8 +235,8 @@ public sealed class LhmBackend : IHardwareBackend
 
     public void ReleaseAll()
     {
-        // Snapshot the set: SetDefault mutates _engaged through ReleaseToFirmware.
-        foreach (var fanId in _engaged.ToArray())
+        // Snapshot the keys: SetDefault mutates _engaged through ReleaseToFirmware.
+        foreach (var fanId in _engaged.Keys.ToArray())
         {
             try
             {
