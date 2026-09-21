@@ -98,6 +98,17 @@
                 </Grid>
             </Border>
 
+            <!-- Another Fanner is already running. Copies from 0.4.1 and earlier
+                 cannot stand aside for each other, so the pair can only be reported. -->
+            <Border Classes="card" Margin="20,0,20,0"
+                    Background="{DynamicResource BadgeBackground}"
+                    IsVisible="{Binding OtherCopyWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                <StackPanel Spacing="2">
+                    <TextBlock Classes="h2" Text="Two copies are running" />
+                    <TextBlock Classes="caption" Text="{Binding OtherCopyWarning}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
         </StackPanel>
 
         <!-- Starting -->
@@ -400,7 +411,8 @@
 
                             <StackPanel Spacing="2">
                                 <CheckBox Content="Closing the window keeps Fanner running"
-                                          IsChecked="{Binding CloseToTray}"
+                                          IsChecked="{Binding CloseToTray, Mode=OneWay}"
+                                          Click="OnCloseToTrayClicked"
                                           AutomationProperties.Name="Close to tray" />
                                 <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0"
                                            Text="Quit from the tray icon to stop it and hand every fan back to the motherboard." />
@@ -408,10 +420,18 @@
 
                             <StackPanel Spacing="2">
                                 <CheckBox Content="Start with Windows"
-                                          IsChecked="{Binding RunAtStartup}"
+                                          IsChecked="{Binding RunAtStartup, Mode=OneWay}"
+                                          Click="OnStartWithWindowsClicked"
                                           AutomationProperties.Name="Start with Windows" />
                                 <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0"
                                            Text="Registers a scheduled task that starts Fanner elevated at logon, with no UAC prompt. The Run registry key cannot do this." />
+                                <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,4,0,0"
+                                           Text="{Binding StartupTarget}"
+                                           IsVisible="{Binding StartupTarget, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                <Button Content="Start this copy instead" Margin="28,6,0,0"
+                                        HorizontalAlignment="Left"
+                                        IsVisible="{Binding StartupPointsElsewhere}"
+                                        Command="{Binding UseThisCopyForStartupCommand}" />
                             </StackPanel>
                         </StackPanel>
 
