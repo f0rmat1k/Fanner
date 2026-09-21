@@ -128,6 +128,12 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial bool RunAtStartup { get; set; }
 
+    /// <summary>Version of this build, for the header.</summary>
+    public string Version { get; } = AppVersion.Number;
+
+    /// <summary>Version and commit, for a bug report.</summary>
+    public string VersionDetail { get; } = $"Fanner {AppVersion.Full}";
+
     /// <summary>
     /// What the logon task will start, in words, or empty when there is no task.
     /// </summary>

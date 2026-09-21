@@ -21,6 +21,8 @@
                 <StackPanel Grid.Column="0" Spacing="3">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <TextBlock Classes="h1" Text="Fanner" />
+                        <TextBlock Classes="caption" Text="{Binding Version}"
+                                   VerticalAlignment="Bottom" Margin="0,0,0,4" />
                         <Border Classes="badge" IsVisible="{Binding IsSimulated}">
                             <TextBlock Classes="caption" Text="SIMULATED" />
                         </Border>
@@ -439,6 +441,9 @@
                                    Foreground="{DynamicResource AccentWarn}"
                                    Text="{Binding SettingsError}"
                                    IsVisible="{Binding SettingsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                        <TextBlock Classes="caption" TextWrapping="Wrap" Opacity="0.7"
+                                   Text="{Binding VersionDetail}" />
 
                     </StackPanel>
                 </ScrollViewer>
