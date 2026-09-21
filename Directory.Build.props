@@ -10,7 +10,7 @@
     <NoWarn>$(NoWarn);CA1416</NoWarn>
     <Product>Fanner</Product>
     <Company>Fanner</Company>
-    <Version>0.4.2</Version>
+    <Version>0.4.3</Version>
   </PropertyGroup>
 
 </Project>
