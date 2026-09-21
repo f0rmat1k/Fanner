@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Fanner.Core.Abstractions;
 using Fanner.Core.Curves;
 using Fanner.Core.Model;
@@ -235,6 +236,137 @@ public class MonitorServiceTests
         Assert.Contains("fan-1", backend.Released);
     }
 
+    [Fact]
+    public async Task Writes_every_controlled_fan_again_after_a_gap_that_looks_like_sleep()
+    {
+        var backend = new FakeBackend { BlockFirstPoll = true };
+        using var monitor = new MonitorService(backend, TimeSpan.FromMilliseconds(20))
+        {
+            ResumeGap = TimeSpan.FromMilliseconds(150),
+        };
+
+        var reasserted = new TaskCompletionSource<TimeSpan>(TaskCreationOptions.RunContinuationsAsynchronously);
+        monitor.ControlReasserted += (_, away) => reasserted.TrySetResult(away);
+
+        await monitor.StartAsync();
+        Assert.True(backend.EnteredPoll.Wait(TimeSpan.FromSeconds(2)), "poll never started");
+
+        monitor.SetDuty("fan-1", 70);
+
+        // Held inside the poll, so the polling thread misses its cadence by as much
+        // as a short sleep would cost it.
+        await Task.Delay(400);
+        backend.ReleasePoll();
+
+        Assert.Same(reasserted.Task, await Task.WhenAny(reasserted.Task, Task.Delay(TimeSpan.FromSeconds(3))));
+
+        var gap = await reasserted.Task;
+        Assert.True(gap > TimeSpan.FromMilliseconds(150), $"expected the reported gap to be the time away, saw {gap}");
+        Assert.Contains("fan-1", backend.Reasserted);
+        Assert.Equal(1, backend.ReassertCount);
+    }
+
+    [Fact]
+    public async Task Does_not_write_control_again_while_polling_normally()
+    {
+        var backend = new FakeBackend();
+        using var monitor = new MonitorService(backend, TimeSpan.FromMilliseconds(20))
+        {
+            ResumeGap = TimeSpan.FromMilliseconds(150),
+        };
+
+        await monitor.StartAsync();
+        monitor.SetDuty("fan-1", 70);
+
+        Assert.True(await backend.WaitForPolls(8), "expected the monitor to keep polling");
+
+        // Re-asserting writes every header we hold. Doing it on an ordinary hiccup
+        // would keep poking the fans for nothing.
+        Assert.Equal(0, backend.ReassertCount);
+    }
+
+    [Fact]
+    public async Task Writes_control_again_on_request()
+    {
+        var backend = new FakeBackend();
+        using var monitor = new MonitorService(backend, TimeSpan.FromMilliseconds(20));
+
+        await monitor.StartAsync();
+        monitor.SetDuty("fan-1", 70);
+        Assert.True(await backend.WaitForDuty(70), "expected the queued write to reach the backend");
+
+        monitor.RequestReassert();
+        await Task.Delay(200);
+
+        // Once, not once per poll: the request is consumed when it is served.
+        Assert.Equal(1, backend.ReassertCount);
+    }
+
+    [Fact]
+    public async Task Does_not_take_the_fans_back_after_the_watchdog_released_them()
+    {
+        var backend = new FakeBackend
+        {
+            BlockFirstPoll = true,
+            FanMode = FanControlMode.Software,
+            CpuTemperature = 99,
+        };
+
+        using var monitor = new MonitorService(backend, TimeSpan.FromMilliseconds(20))
+        {
+            ResumeGap = TimeSpan.FromMilliseconds(150),
+        };
+
+        var tripped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        monitor.SafetyTripped += (_, _) => tripped.TrySetResult();
+
+        await monitor.StartAsync();
+        Assert.True(backend.EnteredPoll.Wait(TimeSpan.FromSeconds(2)), "poll never started");
+
+        monitor.SetDuty("fan-1", 70);
+
+        await Task.Delay(400);
+        backend.ReleasePoll();
+
+        Assert.Same(tripped.Task, await Task.WhenAny(tripped.Task, Task.Delay(TimeSpan.FromSeconds(3))));
+        await Task.Delay(150);
+
+        // Waking up hot is the one case where re-asserting must not happen: the fans
+        // were just handed back on purpose, and writing our duties again would undo
+        // the only thing standing between the machine and its own temperature.
+        Assert.Empty(backend.Reasserted);
+    }
+
+    [Fact]
+    public async Task Watchdog_drops_a_duty_that_was_queued_as_it_fired()
+    {
+        var backend = new FakeBackend
+        {
+            BlockFirstPoll = true,
+            FanMode = FanControlMode.Software,
+            CpuTemperature = 99,
+        };
+
+        using var monitor = new MonitorService(backend, TimeSpan.FromMilliseconds(20));
+
+        var tripped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        monitor.SafetyTripped += (_, _) => tripped.TrySetResult();
+
+        await monitor.StartAsync();
+        Assert.True(backend.EnteredPoll.Wait(TimeSpan.FromSeconds(2)), "poll never started");
+
+        // Queued while the poll that trips the watchdog is already under way.
+        monitor.SetDuty("fan-1", 70);
+        backend.ReleasePoll();
+
+        Assert.Same(tripped.Task, await Task.WhenAny(tripped.Task, Task.Delay(TimeSpan.FromSeconds(3))));
+        await Task.Delay(150);
+
+        // Applying it now would hand a header straight back to a duty the watchdog
+        // has just decided is too low for how hot the machine is.
+        Assert.Equal(0, backend.SetDutyCallCount);
+    }
+
     private sealed class FakeBackend : IHardwareBackend
     {
         private readonly SemaphoreSlim _polled = new(0);
@@ -242,7 +374,11 @@ public class MonitorServiceTests
 
         private int _pollCount;
         private int _setDutyCallCount;
+        private int _reassertCount;
         private double _lastDuty = double.NaN;
+
+        /// <summary>Headers taken over, with the duty last written to each.</summary>
+        private readonly ConcurrentDictionary<string, double> _engaged = new();
 
         public string Name => "Fake";
 
@@ -268,6 +404,11 @@ public class MonitorServiceTests
         public int PollCount => Volatile.Read(ref _pollCount);
 
         public int SetDutyCallCount => Volatile.Read(ref _setDutyCallCount);
+
+        public int ReassertCount => Volatile.Read(ref _reassertCount);
+
+        /// <summary>Headers written again by the last <see cref="ReassertControl"/>.</summary>
+        public List<string> Reasserted { get; } = [];
 
         public BackendStatus Initialize() => InitializeResult ?? BackendStatus.Ok(["Fake chip"]);
 
@@ -305,17 +446,43 @@ public class MonitorServiceTests
         {
             Interlocked.Increment(ref _setDutyCallCount);
             Volatile.Write(ref _lastDuty, percent);
+            _engaged[fanId] = percent;
         }
 
         public void ReleaseToFirmware(string fanId)
         {
+            _engaged.TryRemove(fanId, out _);
+
             lock (Released)
             {
                 Released.Add(fanId);
             }
         }
 
-        public void ReleaseAll() => ReleaseAllCalled = true;
+        public void ReleaseAll()
+        {
+            ReleaseAllCalled = true;
+            _engaged.Clear();
+        }
+
+        /// <summary>
+        /// Writes the headers still taken over, like a real backend: one that has
+        /// been released has nothing left to re-assert.
+        /// </summary>
+        public void ReassertControl()
+        {
+            Interlocked.Increment(ref _reassertCount);
+
+            foreach (var (fanId, duty) in _engaged)
+            {
+                Volatile.Write(ref _lastDuty, duty);
+
+                lock (Reasserted)
+                {
+                    Reasserted.Add(fanId);
+                }
+            }
+        }
 
         public void Dispose() => _pollGate.Set();
 

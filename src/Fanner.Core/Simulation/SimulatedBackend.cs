@@ -93,6 +93,20 @@ public sealed class SimulatedBackend : IHardwareBackend
         }
     }
 
+    /// <summary>
+    /// Re-aims every software-controlled fan at the duty it already has. Nothing
+    /// changes here — the simulated chip has no firmware to forget our settings on
+    /// the way out of sleep — but a backend that cannot be re-asserted would let the
+    /// UI use an interface the real one honours and this one quietly does not.
+    /// </summary>
+    public void ReassertControl()
+    {
+        foreach (var fan in _fans)
+        {
+            fan.Reassert();
+        }
+    }
+
     private static string Header(int index) => $"/sim/lpc/nct6687dr/0/header/{index}";
 
     private FakeFan Find(string fanId) =>
@@ -153,6 +167,14 @@ public sealed class SimulatedBackend : IHardwareBackend
         {
             _target = Math.Clamp(percent, minDuty, 100);
             IsSoftwareControlled = true;
+        }
+
+        public void Reassert()
+        {
+            if (IsSoftwareControlled)
+            {
+                Aim(_target);
+            }
         }
 
         /// <summary>

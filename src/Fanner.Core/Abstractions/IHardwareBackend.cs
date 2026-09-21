@@ -53,4 +53,22 @@ public interface IHardwareBackend : IDisposable
     /// the driver has already gone away.
     /// </summary>
     void ReleaseAll();
+
+    /// <summary>
+    /// Writes every taken-over header's duty cycle to the chip again, whether or not
+    /// anything has changed since the last write.
+    /// </summary>
+    /// <remarks>
+    /// Called after the machine wakes from sleep. The chip is powered down with the
+    /// rest of the board, and firmware re-initialises it on the way back up, which
+    /// clears the manual-control bits and reinstates the BIOS curve. Nothing tells
+    /// us this happened: we still hold the same control channels and still believe
+    /// we are driving, so the display keeps saying "software" while the BIOS is
+    /// quietly in charge. The only fix is to write it all again.
+    /// <para>
+    /// Must be safe to call when nothing is taken over, and must not throw —
+    /// failing to re-assert one header must not strand the rest.
+    /// </para>
+    /// </remarks>
+    void ReassertControl();
 }

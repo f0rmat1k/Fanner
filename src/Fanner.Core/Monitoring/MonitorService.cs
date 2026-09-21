@@ -18,6 +18,9 @@ namespace Fanner.Core.Monitoring;
 /// </remarks>
 public sealed class MonitorService : IDisposable
 {
+    /// <summary>Sentinel for <see cref="_reassertTicks"/>: nothing to re-assert.</summary>
+    private const long NotPending = -1;
+
     private readonly IHardwareBackend _backend;
     private readonly BlockingCollection<Action<IHardwareBackend>> _commands = new();
 
@@ -34,6 +37,13 @@ public sealed class MonitorService : IDisposable
     private Thread? _worker;
     private int _disposed;
 
+    /// <summary>
+    /// How long the machine was away, in ticks, while a re-assert is outstanding;
+    /// <see cref="NotPending"/> otherwise. Written from the polling thread and from
+    /// callers of <see cref="RequestReassert"/>, hence the interlocked access.
+    /// </summary>
+    private long _reassertTicks = NotPending;
+
     public MonitorService(IHardwareBackend backend, TimeSpan? pollInterval = null)
     {
         _backend = backend;
@@ -42,6 +52,21 @@ public sealed class MonitorService : IDisposable
 
     /// <summary>How often the hardware is read. One second matches what fan control needs.</summary>
     public TimeSpan PollInterval { get; set; }
+
+    /// <summary>
+    /// A gap between polls longer than this is read as the machine having been
+    /// asleep, and every controlled header is written again.
+    /// </summary>
+    /// <remarks>
+    /// The polling thread is frozen along with everything else while the machine
+    /// sleeps, so the wall clock jumping forward is the one signal that needs no
+    /// platform support. It is generous — a poll takes a good fraction of a second
+    /// on a board with a lot of sensors, and a busy machine can delay the next one
+    /// further — because a missed resume leaves the fans on the BIOS curve while the
+    /// display claims otherwise, whereas a spurious one costs a write of the duty
+    /// the header is already meant to have.
+    /// </remarks>
+    public TimeSpan ResumeGap { get; set; } = TimeSpan.FromSeconds(8);
 
     /// <summary>Rolling per-channel history feeding the charts.</summary>
     public SensorHistory History { get; } = new();
@@ -76,6 +101,12 @@ public sealed class MonitorService : IDisposable
 
     /// <summary>Raised when a poll throws. Polling continues; the UI can surface a warning.</summary>
     public event EventHandler<Exception>? PollFailed;
+
+    /// <summary>
+    /// Raised on the polling thread after every controlled header has been written
+    /// again, carrying how long the machine appeared to be away.
+    /// </summary>
+    public event EventHandler<TimeSpan>? ControlReasserted;
 
     /// <summary>
     /// Raised after the watchdog has already released the fans. Reporting only — the
@@ -180,6 +211,25 @@ public sealed class MonitorService : IDisposable
         Post(backend => backend.ReleaseAll());
     }
 
+    /// <summary>
+    /// Asks for every controlled header to be written again at the next poll.
+    /// </summary>
+    /// <remarks>
+    /// The polling thread notices sleep on its own, so this is for anything that
+    /// knows sooner or knows better — a platform power event, or a user who can see
+    /// that the board has stopped listening.
+    /// </remarks>
+    public void RequestReassert()
+    {
+        if (Volatile.Read(ref _disposed) != 0)
+        {
+            return;
+        }
+
+        Interlocked.CompareExchange(ref _reassertTicks, 0, NotPending);
+        _work.Set();
+    }
+
     private void Run()
     {
         BackendStatus status;
@@ -202,6 +252,7 @@ public sealed class MonitorService : IDisposable
 
         var token = _stopping.Token;
         var nextPoll = DateTime.UtcNow;
+        var lastPoll = DateTime.MinValue;
 
         while (!token.IsCancellationRequested)
         {
@@ -217,7 +268,15 @@ public sealed class MonitorService : IDisposable
                 continue;
             }
 
-            nextPoll = DateTime.UtcNow + PollInterval;
+            var startedPoll = DateTime.UtcNow;
+            var away = lastPoll == DateTime.MinValue ? TimeSpan.Zero : startedPoll - lastPoll;
+            lastPoll = startedPoll;
+            nextPoll = startedPoll + PollInterval;
+
+            if (away > ResumeGap)
+            {
+                Interlocked.Exchange(ref _reassertTicks, away.Ticks);
+            }
 
             try
             {
@@ -234,11 +293,21 @@ public sealed class MonitorService : IDisposable
                     // still running would hand them back and take them again on the
                     // very next poll, which is no protection at all.
                     Curves.Suspend(trip.Message);
+
+                    // A slider moved a moment ago is still queued, and applying it
+                    // after the release would take a header straight back — the same
+                    // trap ReleaseToFirmware avoids.
+                    _pendingDuty.Clear();
+
                     SafeReleaseAll();
                     SafetyTripped?.Invoke(this, trip);
+
+                    // Nothing is held any more, so there is nothing to write again.
+                    Interlocked.Exchange(ref _reassertTicks, NotPending);
                 }
                 else
                 {
+                    Reassert();
                     ApplyCurves(snapshot);
                 }
 
@@ -275,6 +344,36 @@ public sealed class MonitorService : IDisposable
         {
             // Disposed mid-wait; the loop condition picks it up.
         }
+    }
+
+    /// <summary>
+    /// Writes every controlled header again when a re-assert is outstanding.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately after the poll rather than the moment the gap is noticed: a poll
+    /// that has just come back is proof the chip is answering again. If the write
+    /// throws, the request stays outstanding and the next poll tries again.
+    /// </remarks>
+    private void Reassert()
+    {
+        var ticks = Interlocked.Read(ref _reassertTicks);
+        if (ticks == NotPending)
+        {
+            return;
+        }
+
+        try
+        {
+            _backend.ReassertControl();
+        }
+        catch (Exception ex)
+        {
+            PollFailed?.Invoke(this, ex);
+            return;
+        }
+
+        Interlocked.CompareExchange(ref _reassertTicks, NotPending, ticks);
+        ControlReasserted?.Invoke(this, TimeSpan.FromTicks(ticks));
     }
 
     /// <summary>
