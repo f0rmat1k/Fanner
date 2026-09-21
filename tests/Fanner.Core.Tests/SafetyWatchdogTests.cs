@@ -100,6 +100,59 @@ public class SafetyWatchdogTests
         Assert.Null(new SafetyWatchdog().Evaluate(snapshot));
     }
 
+    private static HardwareSnapshot GpuSnapshot(
+        string sensorName,
+        double temperature,
+        HardwareCategory drivenFan) => new(
+        DateTimeOffset.UnixEpoch,
+        [new FanSnapshot(
+            "fan-1", "Fan", "chip", 900, 40, CanControl: true, FanControlMode.Software,
+            MinDuty: 0, MaxDuty: 100, Category: drivenFan)],
+        [new SensorReading(
+            "t", sensorName, "NVIDIA GeForce RTX 4090", SensorKind.Temperature,
+            temperature, HardwareCategory.Gpu)],
+        []);
+
+    [Fact]
+    public void Ignores_a_hot_graphics_card_whose_fans_are_not_ours()
+    {
+        // Reported from a real machine: case fans on a custom curve, GPU fans never
+        // touched, and a warning saying every fan had been handed back because the
+        // card was warm. Nothing we did made the card hot and nothing we undo will
+        // cool it, so this is not our emergency to declare.
+        Assert.Null(new SafetyWatchdog().Evaluate(
+            GpuSnapshot("GPU Hot Spot", 99, HardwareCategory.Motherboard)));
+    }
+
+    [Fact]
+    public void Ignores_a_hot_spot_reading_that_is_ordinary_for_the_part()
+    {
+        // 90.8 °C on the hot spot of a 4090 is a game running, not a fault: the
+        // measurement sits ten to twenty degrees above the core it belongs to.
+        Assert.Null(new SafetyWatchdog().Evaluate(
+            GpuSnapshot("GPU Hot Spot", 90.8, HardwareCategory.Gpu)));
+    }
+
+    [Fact]
+    public void Trips_on_a_hot_spot_past_its_own_limit()
+    {
+        var trip = new SafetyWatchdog().Evaluate(
+            GpuSnapshot("GPU Hot Spot", 106, HardwareCategory.Gpu));
+
+        Assert.NotNull(trip);
+        Assert.Equal(105, trip.Threshold);
+    }
+
+    [Fact]
+    public void Trips_on_a_hot_core_when_the_card_is_running_our_duty()
+    {
+        var trip = new SafetyWatchdog().Evaluate(
+            GpuSnapshot("GPU Core", 91, HardwareCategory.Gpu));
+
+        Assert.NotNull(trip);
+        Assert.Equal(90, trip.Threshold);
+    }
+
     [Fact]
     public void Summary_names_the_watched_limits()
     {

@@ -50,6 +50,19 @@ public sealed class SafetyWatchdog
     };
 
     /// <summary>
+    /// Extra headroom for a hot spot or junction reading, in Celsius.
+    /// </summary>
+    /// <remarks>
+    /// These are not the same measurement as the die temperature they sit beside.
+    /// The hot spot is the single warmest point the card can find, and it runs ten to
+    /// twenty degrees above the core by design — an RTX 4090 reports a hot spot in
+    /// the nineties during any ordinary game, while its own throttle point is above a
+    /// hundred. Judging it by the core's limit means reporting an emergency every
+    /// time someone plays something.
+    /// </remarks>
+    private const double JunctionAllowanceC = 15;
+
+    /// <summary>
     /// Set once a limit is crossed, cleared once everything drops back below
     /// limit minus hysteresis. Stops one hot excursion from reporting every second.
     /// </summary>
@@ -82,15 +95,9 @@ public sealed class SafetyWatchdog
 
         // Clear the latch once every watched sensor is comfortably back down, so a
         // later excursion is reported afresh.
-        if (watched.All(t => t.Value < _thresholds[t.Category] - HysteresisC))
+        if (watched.All(t => t.Value < ThresholdFor(t) - HysteresisC))
         {
             _reportedThisExcursion = false;
-        }
-
-        if (!snapshot.Fans.Any(f => f.Mode == FanControlMode.Software))
-        {
-            // Not driving anything, so there is nothing of ours to undo.
-            return null;
         }
 
         if (_reportedThisExcursion)
@@ -100,7 +107,12 @@ public sealed class SafetyWatchdog
 
         foreach (var sensor in watched)
         {
-            var threshold = _thresholds[sensor.Category];
+            if (!WeDriveFansThatAffect(sensor.Category, snapshot))
+            {
+                continue;
+            }
+
+            var threshold = ThresholdFor(sensor);
 
             if (sensor.Value >= threshold)
             {
@@ -122,6 +134,38 @@ public sealed class SafetyWatchdog
     /// <summary>Overrides a category limit, or adds one that is not watched by default.</summary>
     public void SetThreshold(HardwareCategory category, double celsius) =>
         _thresholds[category] = celsius;
+
+    /// <summary>
+    /// Whether any fan we are driving could have caused this temperature — the whole
+    /// question the watchdog exists to answer.
+    /// </summary>
+    /// <remarks>
+    /// A graphics card runs its own fans off its own curve. If we are not driving
+    /// them, a hot GPU is not our doing and handing the case fans back to the
+    /// motherboard does nothing about it: at best it changes nothing, at worst it
+    /// takes away the airflow that was helping. The card throttles itself long
+    /// before anything is at risk.
+    /// </remarks>
+    private static bool WeDriveFansThatAffect(HardwareCategory sensor, HardwareSnapshot snapshot)
+    {
+        var ours = snapshot.Fans.Where(f => f.Mode == FanControlMode.Software);
+
+        return sensor == HardwareCategory.Gpu
+            ? ours.Any(f => f.Category == HardwareCategory.Gpu)
+            : ours.Any(f => f.Category != HardwareCategory.Gpu);
+    }
+
+    private double ThresholdFor(SensorReading sensor) =>
+        _thresholds[sensor.Category] + (IsJunction(sensor.Name) ? JunctionAllowanceC : 0);
+
+    /// <summary>
+    /// True for the warmest-point readings a chip publishes beside its die
+    /// temperature: hot spot on a graphics core, junction on its memory.
+    /// </summary>
+    private static bool IsJunction(string name) =>
+        name.Contains("hot spot", StringComparison.OrdinalIgnoreCase)
+        || name.Contains("hotspot", StringComparison.OrdinalIgnoreCase)
+        || name.Contains("junction", StringComparison.OrdinalIgnoreCase);
 
     private static string Describe(HardwareCategory category) => category switch
     {

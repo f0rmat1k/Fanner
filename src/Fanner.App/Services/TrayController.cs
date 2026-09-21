@@ -38,7 +38,7 @@ internal sealed class TrayController : IDisposable
             _icon = new TrayIcon
             {
                 Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://Fanner/Assets/fanner.ico"))),
-                ToolTipText = "Fanner",
+                ToolTipText = $"Fanner {AppVersion.Number}",
                 IsVisible = true,
             };
 
