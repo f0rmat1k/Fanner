@@ -697,6 +697,16 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        // Only act on a request that disagrees with the system. Registering rewrites
+        // the task with the path of whichever copy of Fanner is running, so a stray
+        // write from a binding — the settings panel pushing the checkbox's own
+        // initial value back before it has been given ours — is enough to point
+        // logon at a copy nobody meant to install.
+        if (value == StartupTask.IsRegistered())
+        {
+            return;
+        }
+
         var error = value ? StartupTask.Register() : StartupTask.Unregister();
 
         if (error is not null)

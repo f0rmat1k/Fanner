@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 using Fanner.App.Services;
 using Fanner.App.ViewModels;
 using Fanner.App.Views;
@@ -43,6 +44,11 @@ public partial class App : Application
             };
 
             SetUpTray(args);
+
+            // Starting Fanner again is how most people ask for a window they have
+            // closed to the tray, so treat it as that rather than as a mistake.
+            Program.Instance?.ListenForSecondLaunch(
+                () => Dispatcher.UIThread.Post(ShowWindow));
 
             // Bringing the driver up takes a moment; let the window paint first so a
             // slow start looks like loading rather than a hang.

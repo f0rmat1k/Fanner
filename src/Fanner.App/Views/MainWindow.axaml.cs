@@ -27,6 +27,34 @@ public partial class MainWindow : Window
             (DataContext as MainViewModel)?.CurveEditor?.MovePoint(e.Index, e.Point);
     }
 
+    /// <summary>
+    /// Pushes a clicked checkbox into the view model. Bound one way, so the control
+    /// follows the view model and can never write back on its own.
+    /// </summary>
+    /// <remarks>
+    /// Click is raised by input only, which a value change is not: a two-way
+    /// binding here sent the checkbox's own initial state to the view model as the
+    /// settings panel was built, and that turned into a logon task being deleted and
+    /// written again for a copy of Fanner that happened to be running at the time.
+    /// </remarks>
+    private void OnStartWithWindowsClicked(object? sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox { IsChecked: { } isChecked }
+            && DataContext is MainViewModel viewModel)
+        {
+            viewModel.RunAtStartup = isChecked;
+        }
+    }
+
+    private void OnCloseToTrayClicked(object? sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox { IsChecked: { } isChecked }
+            && DataContext is MainViewModel viewModel)
+        {
+            viewModel.CloseToTray = isChecked;
+        }
+    }
+
     private static void OnInputBeforeSlider(object? sender, RoutedEventArgs e)
     {
         if (e.Source is Visual source
