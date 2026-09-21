@@ -89,9 +89,15 @@ public partial class App : Application
         {
             // Launched by the logon task: apply the profile without putting a window
             // in front of someone who has just signed in.
+            //
+            // Leaving the lifetime nothing to show is the only way to start with no
+            // window at all. It shows MainWindow itself once this returns, so hiding
+            // the window here is undone a moment later — and a window that is both
+            // minimised and out of the taskbar comes back as a bare title bar parked
+            // in the corner of the screen, which is exactly what people saw at every
+            // logon.
+            _desktop.MainWindow = null;
             _window.ShowInTaskbar = false;
-            _window.WindowState = WindowState.Minimized;
-            _window.Hide();
         }
     }
 
@@ -113,6 +119,13 @@ public partial class App : Application
         if (_window is null)
         {
             return;
+        }
+
+        // Started hidden, so the lifetime was given no main window. It gets one now,
+        // or closing this window would no longer be the app's business.
+        if (_desktop is { MainWindow: null })
+        {
+            _desktop.MainWindow = _window;
         }
 
         _window.ShowInTaskbar = true;

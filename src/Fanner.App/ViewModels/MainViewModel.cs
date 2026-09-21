@@ -128,6 +128,34 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial bool RunAtStartup { get; set; }
 
+    /// <summary>
+    /// What the logon task will start, in words, or empty when there is no task.
+    /// </summary>
+    /// <remarks>
+    /// Worth saying out loud because updating Fanner means downloading another
+    /// executable, and the task keeps pointing at the one it was registered with.
+    /// Without this the only way to know which of three files in a Downloads folder
+    /// Windows actually starts is to reboot and watch.
+    /// </remarks>
+    [ObservableProperty]
+    public partial string StartupTarget { get; set; } = string.Empty;
+
+    /// <summary>True when the logon task starts some other copy than this one.</summary>
+    [ObservableProperty]
+    public partial bool StartupPointsElsewhere { get; set; }
+
+    /// <summary>
+    /// Set when another Fanner is running that this one could not stand aside for.
+    /// </summary>
+    /// <remarks>
+    /// Copies from 0.4.1 and earlier do not know about each other, so the pair can
+    /// only be spotted after the fact and reported. It matters: two copies both
+    /// write duty cycles, and quitting either one hands every header back to the
+    /// firmware while the other still believes it is driving.
+    /// </remarks>
+    [ObservableProperty]
+    public partial string OtherCopyWarning { get; set; } = string.Empty;
+
     [ObservableProperty]
     public partial bool CloseToTray { get; set; } = true;
 
@@ -216,6 +244,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _config = _configStore.Load();
         LoadSettingsFromConfig();
 
+        OtherCopyWarning = DescribeOtherCopies();
+
         var backend = BackendSelector.Create(_args);
 
         _monitor = new MonitorService(backend);
@@ -255,6 +285,96 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         CanFixByElevating = status.Failure == BackendFailure.NeedsElevation;
         NeedsDriverInstall = status.Failure == BackendFailure.DriverUnavailable;
+    }
+
+    /// <summary>
+    /// Points the logon task at the copy of Fanner running right now.
+    /// </summary>
+    /// <remarks>
+    /// The alternative is unticking the box and ticking it again, which works only
+    /// because registering happens to use the running executable's path — a detail
+    /// nobody should have to know to update their fan controller.
+    /// </remarks>
+    [RelayCommand]
+    private void UseThisCopyForStartup()
+    {
+        var error = StartupTask.Register();
+
+        SettingsError = error is null
+            ? string.Empty
+            : $"Could not change the startup task: {error}";
+
+        RunAtStartup = StartupTask.IsRegistered();
+        RefreshStartupTarget();
+    }
+
+    /// <summary>Works out which copy the logon task starts, and says so.</summary>
+    private void RefreshStartupTarget()
+    {
+        var registered = StartupTask.RegisteredExecutable();
+
+        if (registered is null)
+        {
+            StartupTarget = string.Empty;
+            StartupPointsElsewhere = false;
+            return;
+        }
+
+        var here = Environment.ProcessPath;
+
+        if (here is not null && string.Equals(registered, here, StringComparison.OrdinalIgnoreCase))
+        {
+            StartupTarget = "Windows starts this copy at logon.";
+            StartupPointsElsewhere = false;
+            return;
+        }
+
+        StartupPointsElsewhere = true;
+        StartupTarget = File.Exists(registered)
+            ? $"Windows starts a different copy at logon: {registered}"
+            : $"Windows is set to start a file that is no longer there: {registered}";
+    }
+
+    /// <summary>
+    /// Describes any other Fanner already running, or an empty string.
+    /// </summary>
+    /// <remarks>
+    /// Matched on the process name rather than its path, which cannot be read when
+    /// the other copy is elevated and this one is not — the usual pairing. The name
+    /// is loose on purpose: released builds are called things like
+    /// <c>Fanner-v0.4.2-win-x64</c>, and those are exactly the copies too old to
+    /// stand aside on their own.
+    /// </remarks>
+    private static string DescribeOtherCopies()
+    {
+        try
+        {
+            var mine = Environment.ProcessId;
+            var others = new List<int>();
+
+            foreach (var process in Process.GetProcesses())
+            {
+                using (process)
+                {
+                    if (process.Id != mine
+                        && process.ProcessName.Contains("Fanner", StringComparison.OrdinalIgnoreCase))
+                    {
+                        others.Add(process.Id);
+                    }
+                }
+            }
+
+            return others.Count == 0
+                ? string.Empty
+                : $"Another copy of Fanner is running ({string.Join(", ", others.Select(id => $"process {id}"))}). "
+                  + "Two copies both write fan speeds, and quitting either one gives every fan back to the "
+                  + "motherboard. Quit the other from its tray icon.";
+        }
+        catch (Exception)
+        {
+            // Enumerating processes is a courtesy, not a requirement.
+            return string.Empty;
+        }
     }
 
     [RelayCommand]
@@ -463,6 +583,17 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         // Scheduler without Fanner ever knowing, and a checkbox that disagrees with
         // reality is worse than no checkbox.
         RunAtStartup = StartupTask.IsRegistered();
+
+        // A task pointing at a file that is gone starts nothing and says nothing,
+        // which is the worst way for "start with Windows" to fail. Updating means
+        // downloading a new executable and deleting the old one, so this is the
+        // normal path, not an edge case.
+        if (RunAtStartup && StartupTask.TargetIsMissing())
+        {
+            StartupTask.Register();
+        }
+
+        RefreshStartupTarget();
 
         _applyingProfile = false;
         ProfilesChanged?.Invoke(this, EventArgs.Empty);

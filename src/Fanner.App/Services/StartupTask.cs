@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Security.Principal;
 using System.Text;
+using System.Xml.Linq;
 
 namespace Fanner.App.Services;
 
@@ -23,6 +24,65 @@ internal static class StartupTask
 
     public static bool IsRegistered() =>
         Run("/query", "/tn", TaskName).ExitCode == 0;
+
+    /// <summary>
+    /// The executable Windows will start at logon, or null if there is no task or it
+    /// cannot be read.
+    /// </summary>
+    /// <remarks>
+    /// Read from the task's own definition file rather than from
+    /// <c>schtasks /query /xml</c>, whose output comes back through the pipe in the
+    /// console code page and mangles any path that is not plain ASCII — a user
+    /// folder named in Cyrillic, for instance. The file on disk is UTF-16 and needs
+    /// no guessing.
+    /// <para>
+    /// This matters because registering bakes in the path of whichever copy of
+    /// Fanner was running at the time. Several downloaded builds in a Downloads
+    /// folder are the normal case, so the one Windows actually starts is worth
+    /// showing rather than leaving people to guess.
+    /// </para>
+    /// </remarks>
+    public static string? RegisteredExecutable()
+    {
+        try
+        {
+            var definition = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.System),
+                "Tasks",
+                TaskName);
+
+            if (!File.Exists(definition))
+            {
+                return null;
+            }
+
+            XNamespace ns = "http://schemas.microsoft.com/windows/2004/02/mit/task";
+
+            var command = XDocument.Load(definition)
+                .Root?
+                .Element(ns + "Actions")?
+                .Element(ns + "Exec")?
+                .Element(ns + "Command")?
+                .Value;
+
+            return string.IsNullOrWhiteSpace(command) ? null : command.Trim().Trim('"');
+        }
+        catch (Exception)
+        {
+            // Unreadable without elevation on some machines. The caller treats not
+            // knowing the same as there being nothing to say.
+            return null;
+        }
+    }
+
+    /// <summary>True when a task exists but the file it would start is gone.</summary>
+    /// <remarks>
+    /// The silent failure this catches: a new build is downloaded, the old one
+    /// deleted, and the logon task keeps pointing at a file that is not there. Ticked
+    /// checkbox, registered task, nothing starts, no error anywhere.
+    /// </remarks>
+    public static bool TargetIsMissing() =>
+        RegisteredExecutable() is { } executable && !File.Exists(executable);
 
     /// <summary>Creates or replaces the task. Returns null on success, else the reason.</summary>
     public static string? Register()
